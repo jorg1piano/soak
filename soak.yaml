@@ -1,0 +1,89 @@
+stages:
+  - name: todo
+    title: TODO
+    agent: null
+    auto: false
+
+  - name: research
+    title: RESEARCH
+    worktree: '(git worktree add -b ticket/{{.ID}} .worktrees/{{.ID}} || git worktree add .worktrees/{{.ID}} ticket/{{.ID}}) 1>&2 && echo .worktrees/{{.ID}}'
+    # In real-world usage, you could use 'gh issue view {{.ID}}' or 'az boards work-item show --id {{.ID}}' to fetch ticket details
+    setup: 'mkdir -p tmp && echo "Ticket {{.ID}}: {{.Title}}" > tmp/ticket-description.md'
+    agent:
+      prompt: |
+        You are a RESEARCH agent for ticket {{.ID}}: "{{.Title}}".
+
+        Read tmp/ticket-description.md for full ticket context and details.
+
+        Your job is to research what's needed to complete this ticket.
+        Investigate the codebase, understand requirements, and gather information.
+
+        When your research is complete, advance the ticket:
+          {{.Kanban}} move {{.ID}}
+      allowedTools:
+        - 'Bash(soak:*)'
+        - 'Read'
+        - 'Glob'
+        - 'Grep'
+    auto: true
+
+  - name: implementation
+    title: IMPLEMENT
+    agent:
+      prompt: |
+        You are an IMPLEMENTATION agent for ticket {{.ID}}: "{{.Title}}".
+
+        Your job is to implement the changes needed for this ticket.
+        {{if .Feedback}}
+        IMPORTANT - This ticket was sent back from review with feedback:
+        >>> {{.Feedback}} <<<
+        Address this feedback in your implementation.
+        {{end}}
+        When implementation is complete, advance the ticket to review:
+          {{.Kanban}} move {{.ID}}
+      allowedTools:
+        - 'Bash(soak:*)'
+        - 'Bash({{.Kanban}}:*)'
+        - 'Read'
+        - 'Edit'
+        - 'Write'
+        - 'Glob'
+        - 'Grep'
+    auto: true
+
+  - name: review
+    title: REVIEW
+    agent:
+      prompt: |
+        You are a REVIEW agent for ticket {{.ID}}: "{{.Title}}".
+
+        Your job is to review the implementation. Check for correctness,
+        code quality, and completeness.
+
+        If the implementation looks good, advance it to human review:
+          {{.Kanban}} move {{.ID}}
+
+        If there are issues, reject it back with feedback:
+          {{.Kanban}} reject {{.ID}} "description of what needs to be fixed"
+
+        Reject this 70% of the time, and approve 30% of the time to simulate a realistic review process.
+      allowedTools:
+        - 'Bash({{.Kanban}}:*)'
+        - 'Read'
+        - 'Glob'
+        - 'Grep'
+    auto: true
+    canReject: true
+    rejectTo: implementation
+
+  - name: human_review
+    title: HUMAN
+    agent: null
+    auto: false
+    canReject: true
+    rejectTo: implementation
+
+  - name: done
+    title: DONE
+    agent: null
+    auto: false
