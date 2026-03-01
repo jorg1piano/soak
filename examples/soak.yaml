@@ -1,0 +1,265 @@
+# Soak Pipeline Configuration
+#
+# This file defines a multi-stage AI orchestration pipeline where tickets flow through
+# stages, with each stage optionally having an autonomous Claude Code agent.
+
+# ==============================================================================
+# TICKET CREATION HOOK (OPTIONAL)
+# ==============================================================================
+# createTicket: Shell command to create tickets in external systems (GitHub, Jira, Azure DevOps)
+# - Runs when you create a ticket via TUI ('n' key)
+# - Must output the external ticket ID to stdout
+# - The returned ID becomes the ticket ID in soak
+# - Available template variables: {{.Type}}, {{.Title}}
+# - If not specified, soak generates random IDs locally
+#
+# Examples:
+#
+# GitHub Issues:
+#   createTicket: |
+#     gh issue create --title "[{{.Type}}] {{.Title}}" --label "{{.Type}}" --json number --jq .number
+#
+# Azure DevOps:
+#   createTicket: |
+#     az boards work-item create --type "{{.Type}}" --title "{{.Title}}" --query id -o tsv
+#
+# Jira:
+#   createTicket: |
+#     jira issue create --type {{.Type}} --summary "{{.Title}}" --jql-query key
+#
+# Linear:
+#   createTicket: |
+#     linear issue create --title "{{.Title}}" --label {{.Type}} --format json | jq -r .id
+
+# Uncomment to enable external ticket creation:
+# createTicket: |
+#   gh issue create --title "[{{.Type}}] {{.Title}}" --json number --jq .number
+
+# ==============================================================================
+# PIPELINE STRUCTURE
+# ==============================================================================
+# Tickets flow left-to-right through stages. Each stage can be:
+# - Agent stage (auto=true): Claude spawns automatically and works autonomously
+# - Human stage (agent=null): Requires manual approval/rejection via TUI
+# - Final stage: Last stage in the pipeline (tickets stop here)
+
+stages:
+  # ----------------------------------------------------------------------------
+  # Example: Initial TODO stage (human-only, no agent)
+  # ----------------------------------------------------------------------------
+  - name: todo                    # Internal identifier (used in CLI commands)
+    title: TODO                   # Display name shown in TUI
+    agent: null                   # No agent - this is a human review stage
+    auto: false                   # Don't auto-spawn (only relevant when agent exists)
+
+  # ----------------------------------------------------------------------------
+  # Example: RESEARCH stage with autonomous agent and worktree isolation
+  # ----------------------------------------------------------------------------
+  - name: research
+    title: RESEARCH
+
+    # WORKTREE: Shell command to create isolated git worktree for this ticket
+    # - Runs when ticket first enters this stage
+    # - Must output the worktree path to stdout
+    # - Creates isolated workspace so agents don't conflict
+    # Available template variables: {{.ID}}, {{.Title}}, {{.Feedback}}, {{.Kanban}}
+    worktree: '(git worktree add -b ticket/{{.ID}} .worktrees/{{.ID}} || git worktree add .worktrees/{{.ID}} ticket/{{.ID}}) 1>&2 && echo .worktrees/{{.ID}}'
+
+    # SETUP: Shell command to run once after worktree is created
+    # - Runs in the worktree directory
+    # - Use for installing dependencies, fetching ticket details, etc.
+    # - Example: Fetch ticket from GitHub/Jira/Azure DevOps
+    setup: 'mkdir -p tmp && echo "Ticket {{.ID}}: {{.Title}}" > tmp/ticket-description.md'
+
+    # AGENT: Defines the Claude Code session behavior
+    agent:
+      # PROMPT: Initial message sent to Claude when session spawns
+      # - Supports Go template syntax
+      # - Available variables: {{.ID}}, {{.Title}}, {{.Feedback}}, {{.Kanban}}, {{.Worktree}}
+      # - Should instruct agent how to complete work and advance ticket
+      prompt: |
+        You are a RESEARCH agent for ticket {{.ID}}: "{{.Title}}".
+
+        Read tmp/ticket-description.md for full ticket context and details.
+
+        Your job is to research what's needed to complete this ticket.
+        Investigate the codebase, understand requirements, and gather information.
+
+        When your research is complete, advance the ticket:
+          {{.Kanban}} move {{.ID}}
+
+      # ALLOWED TOOLS: Restrict which Claude Code tools the agent can use
+      # - Format: 'ToolName' or 'ToolName(pattern)' for pattern matching
+      # - Available tools: Bash, Read, Write, Edit, Glob, Grep, WebFetch, WebSearch, etc.
+      # - Use {{.Kanban}} to allow calling soak commands
+      # - Pattern examples:
+      #   - 'Bash(soak:*)' - only soak commands
+      #   - 'Bash({{.Kanban}}:*)' - only commands matching soak binary path
+      #   - 'Read' - read any file
+      allowedTools:
+        - 'Bash(soak:*)'          # Allow "soak move", "soak reject", etc.
+        - 'Read'                   # Allow reading files
+        - 'Glob'                   # Allow finding files by pattern
+        - 'Grep'                   # Allow searching file contents
+
+    # AUTO: If true, Claude session spawns automatically when ticket enters stage
+    # - true: Agent starts working immediately (autonomous workflow)
+    # - false: Must manually open session with 'c' key in TUI
+    auto: true
+
+  # ----------------------------------------------------------------------------
+  # Example: IMPLEMENTATION stage with rejection capability
+  # ----------------------------------------------------------------------------
+  - name: implementation
+    title: IMPLEMENT
+    agent:
+      prompt: |
+        You are an IMPLEMENTATION agent for ticket {{.ID}}: "{{.Title}}".
+
+        Your job is to implement the changes needed for this ticket.
+
+        {{if .Feedback}}
+        IMPORTANT - This ticket was sent back from review with feedback:
+        >>> {{.Feedback}} <<<
+        Address this feedback in your implementation.
+        {{end}}
+
+        When implementation is complete, advance the ticket to review:
+          {{.Kanban}} move {{.ID}}
+
+      allowedTools:
+        - 'Bash(soak:*)'           # Soak commands
+        - 'Bash({{.Kanban}}:*)'    # Soak binary path (handles symlinks)
+        - 'Read'
+        - 'Edit'                   # Allow editing existing files
+        - 'Write'                  # Allow creating new files
+        - 'Glob'
+        - 'Grep'
+    auto: true
+
+  # ----------------------------------------------------------------------------
+  # Example: REVIEW stage with rejection (sends back to implementation)
+  # ----------------------------------------------------------------------------
+  - name: review
+    title: REVIEW
+    agent:
+      prompt: |
+        You are a REVIEW agent for ticket {{.ID}}: "{{.Title}}".
+
+        Your job is to review the implementation. Check for correctness,
+        code quality, and completeness.
+
+        If the implementation looks good, advance it to human review:
+          {{.Kanban}} move {{.ID}}
+
+        If there are issues, reject it back with feedback:
+          {{.Kanban}} reject {{.ID}} "description of what needs to be fixed"
+
+      allowedTools:
+        - 'Bash({{.Kanban}}:*)'
+        - 'Read'
+        - 'Glob'
+        - 'Grep'
+    auto: true
+
+    # REJECT CONFIGURATION:
+    # canReject: If true, allows rejecting ticket (TUI 'x' key or CLI 'soak reject')
+    # rejectTo: Target stage name when ticket is rejected
+    canReject: true
+    rejectTo: implementation       # Send rejected tickets back to IMPLEMENT
+
+  # ----------------------------------------------------------------------------
+  # Example: HUMAN_REVIEW stage (manual approval gate)
+  # ----------------------------------------------------------------------------
+  - name: human_review
+    title: HUMAN
+    agent: null                    # No agent - human must review in TUI
+    auto: false
+    canReject: true
+    rejectTo: implementation       # Humans can also reject back to implementation
+
+  # ----------------------------------------------------------------------------
+  # Example: DONE stage (terminal state)
+  # ----------------------------------------------------------------------------
+  - name: done
+    title: DONE
+    agent: null
+    auto: false
+
+# ==============================================================================
+# TEMPLATE VARIABLES
+# ==============================================================================
+# Available in 'prompt', 'worktree', 'setup', and 'allowedTools':
+#
+# {{.ID}}        - Ticket ID (e.g., "a1b2c3d4" or external ID like "123")
+# {{.Title}}     - Ticket title (e.g., "[bug] Fix login issue")
+# {{.Feedback}}  - Rejection feedback from previous stage (empty if not rejected)
+# {{.Kanban}}    - Path to soak binary (for calling "soak move", "soak reject")
+# {{.Worktree}}  - Worktree path (only available after worktree is created)
+#
+# Available in 'createTicket' only:
+#
+# {{.Type}}      - Ticket type selected in TUI (story, bug, feature, chore, task)
+# {{.Title}}     - Ticket title entered by user
+
+# ==============================================================================
+# ALLOWED TOOLS PATTERNS
+# ==============================================================================
+# Tool restrictions support pattern matching:
+#
+# Basic tools (no restrictions):
+#   - 'Read'              Allow reading any file
+#   - 'Write'             Allow writing any file
+#   - 'Edit'              Allow editing any file
+#   - 'Glob'              Allow file searching
+#   - 'Grep'              Allow content searching
+#
+# Restricted tools (with patterns):
+#   - 'Bash(command:*)'         Only allow commands starting with "command"
+#   - 'Bash({{.Kanban}}:*)'     Only allow soak binary commands
+#   - 'Bash(/usr/bin/git:*)'    Only allow git commands
+#   - 'WebFetch(domain:github.com)'  Only fetch from GitHub
+#
+# Security note: Agents can only use tools explicitly listed in allowedTools
+
+# ==============================================================================
+# WORKFLOW EXAMPLES
+# ==============================================================================
+#
+# Simple two-stage pipeline:
+#   stages:
+#     - name: todo
+#       title: TODO
+#       agent: null
+#     - name: done
+#       title: DONE
+#       agent: null
+#
+# Autonomous implementation pipeline:
+#   stages:
+#     - name: backlog
+#       title: BACKLOG
+#       agent: null
+#     - name: implement
+#       title: WORK
+#       auto: true
+#       agent: { prompt: "...", allowedTools: [...] }
+#     - name: done
+#       title: DONE
+#       agent: null
+#
+# Multi-agent with review loop:
+#   stages:
+#     - name: research
+#       auto: true
+#       agent: { ... }
+#     - name: implement
+#       auto: true
+#       agent: { ... }
+#     - name: review
+#       auto: true
+#       canReject: true
+#       rejectTo: implement
+#       agent: { ... }
+#     - name: done
+#       agent: null
