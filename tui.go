@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // Bubble Tea model, key bindings, and update loop.
@@ -28,6 +29,7 @@ type keyMap struct {
 	FreeClaude key.Binding
 	OpenTicket key.Binding
 	CopyTicket key.Binding
+	Import     key.Binding
 	Quit       key.Binding
 }
 
@@ -42,22 +44,23 @@ func newKeyMap() keyMap {
 		Claude:     key.NewBinding(key.WithKeys("c"), key.WithHelp("c", "claude")),
 		Approve:    key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "approve")),
 		Reject:     key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "reject")),
-		Delete:     key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete")),
+		Delete:     key.NewBinding(key.WithKeys("d", "backspace"), key.WithHelp("d/bksp", "delete")),
 		Editor:     key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "vscode")),
 		Shell:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "shell")),
 		FreeClaude: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "free claude")),
 		OpenTicket: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open ticket")),
 		CopyTicket: key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy link")),
+		Import:     key.NewBinding(key.WithKeys("i"), key.WithHelp("i", "import")),
 		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Open, k.New, k.Claude, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.CopyTicket, k.Quit}
+	return []key.Binding{k.Open, k.New, k.Import, k.Claude, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.CopyTicket, k.Quit}
 }
 
 func (k keyMap) ShortHelpWithApproval() []key.Binding {
-	return []key.Binding{k.Open, k.New, k.Claude, k.Approve, k.Reject, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.CopyTicket, k.Quit}
+	return []key.Binding{k.Open, k.New, k.Import, k.Claude, k.Approve, k.Reject, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.CopyTicket, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding { return nil }
@@ -82,11 +85,25 @@ type model struct {
 	createTypeSelect int // 0=bug, 1=feature, 2=chore, 3=task
 	createTitleInput textinput.Model
 	createStep       int // 0=select type, 1=enter title
+	// Import ticket mode
+	importMode   bool
+	importList   []ExternalTicket
+	importSelect int
 	// Cached values to avoid blocking during render
 	sessionCount int
 	width        int
 	height       int
 	animFrame    int
+}
+
+// ExternalTicket represents a ticket from an external system (listTickets output).
+type ExternalTicket struct {
+	Kind  string `json:"kind"`
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	State string `json:"state"`
+	Type  string `json:"type"`
+	URL   string `json:"url"`
 }
 
 type tickMsg struct{}
@@ -105,6 +122,11 @@ type shellOpenedMsg struct {
 
 type freeClaudeOpenedMsg struct {
 	err error
+}
+
+type listTicketsMsg struct {
+	tickets []ExternalTicket
+	err     error
 }
 
 type tickCompleteMsg struct {
@@ -143,6 +165,11 @@ func initialModel(store *Store, tmux *TmuxManager, pipe *Pipeline) model {
 	createInput.Width = 60
 	createInput.Blur()
 
+	h := help.New()
+	h.Styles.ShortKey = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Bold(true)
+	h.Styles.ShortDesc = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	h.Styles.ShortSeparator = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+
 	m := model{
 		store:            store,
 		tmux:             tmux,
@@ -150,7 +177,7 @@ func initialModel(store *Store, tmux *TmuxManager, pipe *Pipeline) model {
 		rejectInput:      rejectInput,
 		createTitleInput: createInput,
 		keys:             newKeyMap(),
-		help:             help.New(),
+		help:             h,
 		status:           "Ready",
 		sessionCount:     0, // Will be updated on first tick
 	}
@@ -248,9 +275,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case listTicketsMsg:
+		if msg.err != nil {
+			m.status = fmt.Sprintf("listTickets failed: %v", msg.err)
+			return m, nil
+		}
+		if len(msg.tickets) == 0 {
+			m.status = "No tickets found"
+			return m, nil
+		}
+		m.importMode = true
+		m.importList = msg.tickets
+		m.importSelect = 0
+		m.status = "Select ticket to import (↑/↓ navigate, Enter select, Esc cancel)"
+		return m, nil
+
 	case tickMsg:
 		// Don't update tick when in input mode to avoid blocking
-		if m.createMode || m.rejectMode {
+		if m.createMode || m.rejectMode || m.importMode {
 			return m, tickCmd()
 		}
 		return m.handleTick()
@@ -263,6 +305,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		if m.rejectMode {
 			return m.handleRejectInput(msg)
+		}
+
+		if m.importMode {
+			return m.handleImportInput(msg)
 		}
 
 		if m.createMode {
@@ -294,6 +340,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleOpenTicket()
 		case key.Matches(msg, m.keys.CopyTicket):
 			return m.handleCopyTicket()
+		case key.Matches(msg, m.keys.Import):
+			return m.handleImport()
 		default:
 			return m.handleNavigation(msg)
 		}

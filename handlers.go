@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -432,6 +433,71 @@ func (m model) handleCopyTicket() (tea.Model, tea.Cmd) {
 		m.status = fmt.Sprintf("Copy failed: %v", err)
 	} else {
 		m.status = fmt.Sprintf("Copied link for #%s", t.ID)
+	}
+	return m, nil
+}
+
+func (m model) handleImport() (tea.Model, tea.Cmd) {
+	if m.pipe.ListTickets == "" {
+		m.status = "No listTickets configured in soak.yaml"
+		return m, nil
+	}
+	m.status = "Fetching tickets..."
+	cmdStr := m.pipe.ListTickets
+	return m, func() tea.Msg {
+		cmd := exec.Command("bash", "-c", strings.TrimSpace(cmdStr))
+		out, err := cmd.Output()
+		if err != nil {
+			return listTicketsMsg{err: err}
+		}
+		var tickets []ExternalTicket
+		if err := json.Unmarshal(out, &tickets); err != nil {
+			return listTicketsMsg{err: fmt.Errorf("parse JSON: %w", err)}
+		}
+		// Filter to ticket kind (treat entries without kind as tickets)
+		var filtered []ExternalTicket
+		for _, t := range tickets {
+			if t.Kind == "" || t.Kind == "ticket" {
+				filtered = append(filtered, t)
+			}
+		}
+		return listTicketsMsg{tickets: filtered}
+	}
+}
+
+func (m model) handleImportInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.Type {
+	case tea.KeyUp, tea.KeyCtrlK:
+		if m.importSelect > 0 {
+			m.importSelect--
+		}
+		return m, nil
+	case tea.KeyDown, tea.KeyCtrlJ:
+		if m.importSelect < len(m.importList)-1 {
+			m.importSelect++
+		}
+		return m, nil
+	case tea.KeyEnter:
+		ext := m.importList[m.importSelect]
+		firstStage := m.pipe.Stages[0].Name
+		t := Ticket{
+			ID:     fmt.Sprintf("%d", ext.ID),
+			Title:  ext.Title,
+			Status: firstStage,
+		}
+		if err := m.store.PutTicket(t); err != nil {
+			m.err = err
+		}
+		m.reload()
+		m.importMode = false
+		m.importList = nil
+		m.status = fmt.Sprintf("Imported #%d: %s", ext.ID, ext.Title)
+		return m, nil
+	case tea.KeyEsc:
+		m.importMode = false
+		m.importList = nil
+		m.status = "Import cancelled"
+		return m, nil
 	}
 	return m, nil
 }

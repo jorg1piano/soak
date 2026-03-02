@@ -30,6 +30,7 @@ type PipelineConfig struct {
 	CreateTicket string        `yaml:"createTicket"`
 	OpenTicket   string        `yaml:"openTicket"`
 	CopyTicket   string        `yaml:"copyTicket"`
+	ListTickets  string        `yaml:"listTickets"`
 	Stages       []StageConfig `yaml:"stages"`
 }
 
@@ -38,6 +39,7 @@ type Pipeline struct {
 	CreateTicket string
 	OpenTicket   string
 	CopyTicket   string
+	ListTickets  string
 	Stages       []StageConfig
 	stageIndex   map[string]int // name -> index
 }
@@ -59,6 +61,7 @@ func LoadPipeline(path string) (*Pipeline, error) {
 		CreateTicket: cfg.CreateTicket,
 		OpenTicket:   cfg.OpenTicket,
 		CopyTicket:   cfg.CopyTicket,
+		ListTickets:  cfg.ListTickets,
 		Stages:       cfg.Stages,
 		stageIndex:   make(map[string]int),
 	}

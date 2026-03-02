@@ -235,6 +235,53 @@ func (m model) View() string {
 		}
 	}
 
+	if m.importMode && len(m.importList) > 0 {
+		rightSide.WriteString(lipgloss.NewStyle().
+			Foreground(lipgloss.Color("33")).
+			Bold(true).
+			Padding(0, 1).
+			Render("  Import ticket:"))
+		rightSide.WriteString("\n")
+		// Show a window of tickets around the selection
+		visibleCount := 8
+		start := m.importSelect - visibleCount/2
+		if start < 0 {
+			start = 0
+		}
+		end := start + visibleCount
+		if end > len(m.importList) {
+			end = len(m.importList)
+			start = end - visibleCount
+			if start < 0 {
+				start = 0
+			}
+		}
+		for i := start; i < end; i++ {
+			t := m.importList[i]
+			prefix := "    "
+			if i == m.importSelect {
+				prefix = "  > "
+			}
+			style := lipgloss.NewStyle().Padding(0, 1)
+			if i == m.importSelect {
+				style = style.Foreground(lipgloss.Color("33")).Bold(true)
+			}
+			label := fmt.Sprintf("%s#%d %s", prefix, t.ID, t.Title)
+			if len(label) > 80 {
+				label = label[:77] + "..."
+			}
+			rightSide.WriteString(style.Render(label))
+			rightSide.WriteString("\n")
+		}
+		if len(m.importList) > visibleCount {
+			rightSide.WriteString(lipgloss.NewStyle().
+				Foreground(lipgloss.Color("240")).
+				Padding(0, 3).
+				Render(fmt.Sprintf("  %d/%d tickets", m.importSelect+1, len(m.importList))))
+			rightSide.WriteString("\n")
+		}
+	}
+
 	if m.rejectMode {
 		rightSide.WriteString(lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).
