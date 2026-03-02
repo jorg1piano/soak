@@ -407,6 +407,35 @@ func (m model) handleOpenTicket() (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m model) handleCopyTicket() (tea.Model, tea.Cmd) {
+	if m.pipe.CopyTicket == "" {
+		m.status = "No copyTicket configured in soak.yaml"
+		return m, nil
+	}
+	t := m.selectedTicket()
+	if t == nil {
+		m.status = "No ticket selected"
+		return m, nil
+	}
+	rendered, err := renderTemplate(m.pipe.CopyTicket, PromptData{
+		ID:       t.ID,
+		Title:    t.Title,
+		Feedback: t.Feedback,
+	})
+	if err != nil {
+		m.status = fmt.Sprintf("Template error: %v", err)
+		return m, nil
+	}
+	rendered = strings.TrimSpace(rendered)
+	cmd := exec.Command("sh", "-c", rendered)
+	if err := cmd.Run(); err != nil {
+		m.status = fmt.Sprintf("Copy failed: %v", err)
+	} else {
+		m.status = fmt.Sprintf("Copied link for #%s", t.ID)
+	}
+	return m, nil
+}
+
 func (m model) handleFreeClaude() (tea.Model, tea.Cmd) {
 	m.status = "Opening free Claude session..."
 	tmux := m.tmux

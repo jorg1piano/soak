@@ -27,6 +27,7 @@ type keyMap struct {
 	Shell      key.Binding
 	FreeClaude key.Binding
 	OpenTicket key.Binding
+	CopyTicket key.Binding
 	Quit       key.Binding
 }
 
@@ -46,16 +47,17 @@ func newKeyMap() keyMap {
 		Shell:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "shell")),
 		FreeClaude: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "free claude")),
 		OpenTicket: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open ticket")),
+		CopyTicket: key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy link")),
 		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Open, k.New, k.Claude, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.Quit}
+	return []key.Binding{k.Open, k.New, k.Claude, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.CopyTicket, k.Quit}
 }
 
 func (k keyMap) ShortHelpWithApproval() []key.Binding {
-	return []key.Binding{k.Open, k.New, k.Claude, k.Approve, k.Reject, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.Quit}
+	return []key.Binding{k.Open, k.New, k.Claude, k.Approve, k.Reject, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.CopyTicket, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding { return nil }
@@ -290,6 +292,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleFreeClaude()
 		case key.Matches(msg, m.keys.OpenTicket):
 			return m.handleOpenTicket()
+		case key.Matches(msg, m.keys.CopyTicket):
+			return m.handleCopyTicket()
 		default:
 			return m.handleNavigation(msg)
 		}
