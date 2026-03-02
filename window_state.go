@@ -135,3 +135,10 @@ func (wst *WindowStateTracker) isWindowIdle(windowName string) bool {
 	state := wst.GetState(windowName)
 	return state == StateIdleRed || state == StateIdleYellow
 }
+
+// RemoveWindow removes a window's state buffer from the tracker
+func (wst *WindowStateTracker) RemoveWindow(windowName string) {
+	wst.mu.Lock()
+	defer wst.mu.Unlock()
+	delete(wst.buffers, windowName)
+}

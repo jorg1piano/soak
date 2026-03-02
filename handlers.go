@@ -53,8 +53,13 @@ func (m model) handleTick() (tea.Model, tea.Cmd) {
 			}
 
 			// Update NeedsAttention flag for all tickets
+			// If a ticket has no window, clear NeedsAttention
 			for _, ticket := range tickets {
 				shouldNeedAttention := idleSet[ticket.ID]
+				// Clear NeedsAttention if ticket has no active window
+				if !tmux.HasSession(ticket) {
+					shouldNeedAttention = false
+				}
 				if ticket.NeedsAttention != shouldNeedAttention {
 					ticket.NeedsAttention = shouldNeedAttention
 					store.PutTicket(ticket)

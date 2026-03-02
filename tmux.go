@@ -94,6 +94,7 @@ func (tm *TmuxManager) openSession(ticket Ticket, switchTo bool) (Ticket, error)
 				tmuxRun("kill-window", "-t", tm.target(name))
 			}
 			delete(tm.windows, name)
+			tm.stateTracker.RemoveWindow(name)
 		}
 	}
 
@@ -104,10 +105,13 @@ func (tm *TmuxManager) openSession(ticket Ticket, switchTo bool) (Ticket, error)
 			if switchTo {
 				tmuxRun("select-window", "-t", tm.target(windowName))
 			}
+			// Reset state tracker since this is a reused window for the same ticket/stage
+			tm.stateTracker.RemoveWindow(windowName)
 			return ticket, nil
 		}
 		tm.mu.Lock()
 		delete(tm.windows, windowName)
+		tm.stateTracker.RemoveWindow(windowName)
 		tm.mu.Unlock()
 		tm.mu.Lock()
 	}
@@ -249,6 +253,9 @@ func (tm *TmuxManager) openSession(ticket Ticket, switchTo bool) (Ticket, error)
 	ticket.LastPingTime = time.Now().Unix()
 	ticket.NeedsAttention = false
 
+	// Reset state tracker for this window (fresh Claude session)
+	tm.stateTracker.RemoveWindow(windowName)
+
 	return ticket, nil
 }
 
@@ -263,6 +270,7 @@ func (tm *TmuxManager) CleanupTicket(ticketID string) {
 				tmuxRun("kill-window", "-t", tm.target(name))
 			}
 			delete(tm.windows, name)
+			tm.stateTracker.RemoveWindow(name)
 		}
 	}
 }
@@ -283,6 +291,7 @@ func (tm *TmuxManager) CleanupStale(tickets []Ticket) {
 				tmuxRun("kill-window", "-t", tm.target(name))
 			}
 			delete(tm.windows, name)
+			tm.stateTracker.RemoveWindow(name)
 		}
 	}
 }
@@ -328,5 +337,6 @@ func (tm *TmuxManager) Cleanup() {
 	for name := range tm.windows {
 		tmuxRun("kill-window", "-t", tm.target(name))
 		delete(tm.windows, name)
+		tm.stateTracker.RemoveWindow(name)
 	}
 }
