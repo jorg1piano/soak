@@ -2,6 +2,7 @@ package main
 
 import (
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -22,6 +23,11 @@ func runCLI(args []string, pipe *Pipeline) {
 	if args[0] == "install-hooks" {
 		global := len(args) > 1 && args[1] == "--global"
 		installHooks(global)
+		return
+	}
+
+	if args[0] == "clean" {
+		runCleanupUI(pipe)
 		return
 	}
 
@@ -135,6 +141,21 @@ func runCLI(args []string, pipe *Pipeline) {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
 		}
+
+		// Check for --json flag
+		jsonOutput := len(args) > 1 && args[1] == "--json"
+
+		if jsonOutput {
+			data, err := json.MarshalIndent(tickets, "", "  ")
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Error encoding JSON: %v\n", err)
+				os.Exit(1)
+			}
+			fmt.Println(string(data))
+			return
+		}
+
+		// Default human-readable output
 		if len(tickets) == 0 {
 			fmt.Println("No tickets")
 			return

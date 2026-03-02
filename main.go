@@ -40,7 +40,7 @@ func main() {
 		cliCommands := map[string]bool{
 			"create": true, "move": true, "reject": true, "status": true,
 			"list": true, "whoami": true, "ping": true, "idle": true,
-			"install-hooks": true, "subscribe": true,
+			"install-hooks": true, "subscribe": true, "clean": true,
 		}
 		if cliCommands[os.Args[1]] {
 			runCLI(os.Args[1:], pipe)
