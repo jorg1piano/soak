@@ -62,6 +62,33 @@
 # openTicket: https://github.com/owner/repo/issues/{{.ID}}
 
 # ==============================================================================
+# COPY TICKET LINK HOOK (OPTIONAL)
+# ==============================================================================
+# copyTicket: Shell command to copy ticket link to clipboard
+# - Triggered with 'y' key in TUI when a ticket is selected
+# - Available template variables: {{.ID}}, {{.Title}}, {{.Feedback}}
+# - Runs a shell command (use pbcopy, xclip, etc. for clipboard)
+# - If not specified, 'y' key shows "No copyTicket configured"
+#
+# Examples:
+#
+# macOS (pbcopy):
+#   copyTicket: |
+#     echo "https://github.com/owner/repo/issues/{{.ID}}" | pbcopy
+#
+# Linux (xclip):
+#   copyTicket: |
+#     echo "https://github.com/owner/repo/issues/{{.ID}}" | xclip -selection clipboard
+#
+# Custom CLI tool:
+#   copyTicket: |
+#     cli ticket link {{.ID}}
+
+# Uncomment to enable copying ticket links:
+# copyTicket: |
+#   echo "https://github.com/owner/repo/issues/{{.ID}}" | pbcopy
+
+# ==============================================================================
 # PIPELINE STRUCTURE
 # ==============================================================================
 # Tickets flow left-to-right through stages. Each stage can be:

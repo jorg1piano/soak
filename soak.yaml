@@ -1,7 +1,6 @@
-openTicket:
-  "https://dev.azure.com/org/project/_workitems/edit/{{.ID}}"
+openTicket: 'https://dev.azure.com/org/project/_workitems/edit/{{.ID}}'
 copyTicket: |
-  sdf ticket link {{.ID}}
+  cli ticket link {{.ID}}
 stages:
   - name: todo
     title: TODO
