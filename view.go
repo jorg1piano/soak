@@ -203,7 +203,7 @@ func (m model) View() string {
 	}
 
 	if m.createMode {
-		ticketTypes := []string{"bug", "feature", "chore", "task"}
+		ticketTypes := []string{"story", "bug", "feature", "chore", "task"}
 		if m.createStep == 0 {
 			rightSide.WriteString(lipgloss.NewStyle().
 				Foreground(lipgloss.Color("33")).

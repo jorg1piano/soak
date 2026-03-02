@@ -26,6 +26,7 @@ type keyMap struct {
 	Editor     key.Binding
 	Shell      key.Binding
 	FreeClaude key.Binding
+	OpenTicket key.Binding
 	Quit       key.Binding
 }
 
@@ -44,16 +45,17 @@ func newKeyMap() keyMap {
 		Editor:     key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "vscode")),
 		Shell:      key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "shell")),
 		FreeClaude: key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "free claude")),
+		OpenTicket: key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open ticket")),
 		Quit:       key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit")),
 	}
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Open, k.New, k.Claude, k.Editor, k.Shell, k.FreeClaude, k.Quit}
+	return []key.Binding{k.Open, k.New, k.Claude, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.Quit}
 }
 
 func (k keyMap) ShortHelpWithApproval() []key.Binding {
-	return []key.Binding{k.Open, k.New, k.Claude, k.Approve, k.Reject, k.Editor, k.Shell, k.FreeClaude, k.Quit}
+	return []key.Binding{k.Open, k.New, k.Claude, k.Approve, k.Reject, k.Editor, k.Shell, k.FreeClaude, k.OpenTicket, k.Quit}
 }
 
 func (k keyMap) FullHelp() [][]key.Binding { return nil }
@@ -286,6 +288,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleShell()
 		case key.Matches(msg, m.keys.FreeClaude):
 			return m.handleFreeClaude()
+		case key.Matches(msg, m.keys.OpenTicket):
+			return m.handleOpenTicket()
 		default:
 			return m.handleNavigation(msg)
 		}

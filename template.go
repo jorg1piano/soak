@@ -16,8 +16,26 @@ type PromptData struct {
 	Worktree string // worktree path (empty if not set)
 }
 
+// CreateTicketData contains template variables for the createTicket command.
+type CreateTicketData struct {
+	Type  string
+	Title string
+}
+
 func renderTemplate(tmpl string, data PromptData) (string, error) {
 	t, err := template.New("prompt").Parse(tmpl)
+	if err != nil {
+		return "", err
+	}
+	var buf bytes.Buffer
+	if err := t.Execute(&buf, data); err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
+func renderCreateTicketTemplate(tmpl string, data CreateTicketData) (string, error) {
+	t, err := template.New("createTicket").Parse(tmpl)
 	if err != nil {
 		return "", err
 	}

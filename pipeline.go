@@ -28,12 +28,14 @@ type StageConfig struct {
 // PipelineConfig is the top-level pipeline configuration loaded from YAML.
 type PipelineConfig struct {
 	CreateTicket string        `yaml:"createTicket"`
+	OpenTicket   string        `yaml:"openTicket"`
 	Stages       []StageConfig `yaml:"stages"`
 }
 
 // Pipeline is the runtime representation of a pipeline built from config.
 type Pipeline struct {
 	CreateTicket string
+	OpenTicket   string
 	Stages       []StageConfig
 	stageIndex   map[string]int // name -> index
 }
@@ -53,6 +55,7 @@ func LoadPipeline(path string) (*Pipeline, error) {
 	}
 	p := &Pipeline{
 		CreateTicket: cfg.CreateTicket,
+		OpenTicket:   cfg.OpenTicket,
 		Stages:       cfg.Stages,
 		stageIndex:   make(map[string]int),
 	}

@@ -36,6 +36,32 @@
 #   gh issue create --title "[{{.Type}}] {{.Title}}" --json number --jq .number
 
 # ==============================================================================
+# OPEN TICKET HOOK (OPTIONAL)
+# ==============================================================================
+# openTicket: URL template to open external tickets in browser
+# - Triggered with 'o' key in TUI when a ticket is selected
+# - Available template variables: {{.ID}}, {{.Title}}, {{.Feedback}}
+# - Uses 'open' command (macOS) to launch default browser
+# - If not specified, 'o' key shows "No openTicket configured"
+#
+# Examples:
+#
+# GitHub Issues:
+#   openTicket: https://github.com/owner/repo/issues/{{.ID}}
+#
+# Azure DevOps:
+#   openTicket: https://dev.azure.com/org/project/_workitems/edit/{{.ID}}
+#
+# Jira:
+#   openTicket: https://company.atlassian.net/browse/{{.ID}}
+#
+# Linear:
+#   openTicket: https://linear.app/team/issue/{{.ID}}
+
+# Uncomment to enable opening tickets in browser:
+# openTicket: https://github.com/owner/repo/issues/{{.ID}}
+
+# ==============================================================================
 # PIPELINE STRUCTURE
 # ==============================================================================
 # Tickets flow left-to-right through stages. Each stage can be:

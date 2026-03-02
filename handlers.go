@@ -151,8 +151,32 @@ func (m model) handleCreateInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			ticketType := ticketTypes[m.createTypeSelect]
 			firstStage := m.pipe.Stages[0].Name
+
+			// Use createTicket command if configured, otherwise generate random ID
+			ticketID := generateTicketID()
+			if m.pipe.CreateTicket != "" {
+				cmdStr, err := renderCreateTicketTemplate(m.pipe.CreateTicket, CreateTicketData{
+					Type:  ticketType,
+					Title: title,
+				})
+				if err != nil {
+					m.status = fmt.Sprintf("Template error: %v", err)
+					return m, nil
+				}
+				cmd := exec.Command("bash", "-c", strings.TrimSpace(cmdStr))
+				out, err := cmd.Output()
+				if err != nil {
+					m.status = fmt.Sprintf("createTicket failed: %v", err)
+					return m, nil
+				}
+				externalID := strings.TrimSpace(string(out))
+				if externalID != "" {
+					ticketID = externalID
+				}
+			}
+
 			t := Ticket{
-				ID:     generateTicketID(),
+				ID:     ticketID,
 				Title:  fmt.Sprintf("[%s] %s", ticketType, title),
 				Status: firstStage,
 			}
@@ -352,6 +376,35 @@ func (m model) handleShell() (tea.Model, tea.Cmd) {
 		}
 		return shellOpenedMsg{err: err}
 	}
+}
+
+func (m model) handleOpenTicket() (tea.Model, tea.Cmd) {
+	if m.pipe.OpenTicket == "" {
+		m.status = "No openTicket configured in soak.yaml"
+		return m, nil
+	}
+	t := m.selectedTicket()
+	if t == nil {
+		m.status = "No ticket selected"
+		return m, nil
+	}
+	url, err := renderTemplate(m.pipe.OpenTicket, PromptData{
+		ID:       t.ID,
+		Title:    t.Title,
+		Feedback: t.Feedback,
+	})
+	if err != nil {
+		m.status = fmt.Sprintf("Template error: %v", err)
+		return m, nil
+	}
+	url = strings.TrimSpace(url)
+	cmd := exec.Command("open", url)
+	if err := cmd.Run(); err != nil {
+		m.status = fmt.Sprintf("Failed to open: %v", err)
+	} else {
+		m.status = fmt.Sprintf("Opened %s", url)
+	}
+	return m, nil
 }
 
 func (m model) handleFreeClaude() (tea.Model, tea.Cmd) {
